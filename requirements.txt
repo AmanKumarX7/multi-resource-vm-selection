@@ -1,0 +1,12 @@
+streamlit
+scikit-learn
+pandas
+numpy
+matplotlib
+pytest
+mysql-connector-python
+python-dotenv
+tabulate
+streamlit
+plotly
+psutil
