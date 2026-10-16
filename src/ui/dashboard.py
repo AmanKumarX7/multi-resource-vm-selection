@@ -253,10 +253,101 @@ if 'initialized' not in st.session_state:
     st.session_state.initialized = True
 
 # Top Navigation Tabs
-
-
 tab_live, tab_exp, tab_analysis, tab_sys = st.tabs([
-    "Live Simulator", "Reproducible Experiments", "Research Analysis", "System Information"
+    "Live Simulator", "Experiments", "Research Analysis", "System Information"
 ])
+
+
+def get_util_color_hex(pct: float) -> str:
+    if pct < 50.0:
+        return "#3fb950"
+    if pct < 85.0:
+        return "#d29922"
+    return "#f85149"
+
+
+# =========================================================
+# TAB 1: LIVE SIMULATOR
+# =========================================================
 with tab_live:
-    st.info("Live Simulator loading...")
+    # A. Page Header
+    st.header("Live Interactive Simulator — VM Load-Balancing Console")
+    st.caption("Compare resource-aware Baseline selection with Random Forest under identical workload conditions.")
+    
+    # Compact System & Status Ribbon
+    status_cols = st.columns([2, 2, 1, 1, 1])
+    with status_cols[0]:
+        if st.session_state.db_connected:
+            st.markdown(f"**MySQL:** <span class='status-badge-ok'>Connected</span> `vm_selection_research`", unsafe_allow_html=True)
+        else:
+            st.markdown(f"**MySQL:** <span class='status-badge-error'>Disconnected</span> *(In-memory fallback)*", unsafe_allow_html=True)
+    with status_cols[1]:
+        if st.session_state.ml_selector:
+            model_file = os.path.basename(st.session_state.ml_selector.model_path)
+            st.markdown(f"**Model:** <span class='status-badge-ok'>Loaded</span> `{model_file}`", unsafe_allow_html=True)
+        else:
+            st.markdown(f"**Model:** <span class='status-badge-error'>Missing</span> *{st.session_state.get('ml_error', 'Unloaded')}*", unsafe_allow_html=True)
+    with status_cols[2]:
+        st.metric("Tick", st.session_state.current_tick)
+    with status_cols[3]:
+        st.metric("Provisioned VMs", len(st.session_state.env_baseline.vms))
+    with status_cols[4]:
+        st.metric("In Queue", len(st.session_state.queue))
+        
+    st.markdown("<hr style='border:0; border-top:1px solid #21262d; margin: 12px 0 16px 0;'>", unsafe_allow_html=True)
+
+    # B. Algorithm Selection — At the Beginning of the Page
+    st.markdown("### Select Algorithm / Execution Mode")
+    exec_mode = st.radio(
+        "Execution Mode",
+        options=[
+            "Compare Both — Baseline vs Random Forest",
+            "Baseline Only",
+            "Random Forest Only"
+        ],
+        index=0,
+        label_visibility="collapsed"
+    )
+    if exec_mode == "Compare Both — Baseline vs Random Forest":
+        st.caption("⚡ **Compare Both Active**: Each allocation evaluates the same workload against two independent, isolated simulation states (Baseline vs Random Forest) starting from equivalent conditions.")
+    elif exec_mode == "Baseline Only":
+        st.caption("⚙️ **Baseline Active**: Executes the deterministic weighted-utilization heuristic on the Baseline simulation state.")
+    else:
+        st.caption("🧠 **Random Forest Active**: Executes the trained ML regressor predicting multi-resource ground truth suitability.")
+
+    st.markdown("<hr style='border:0; border-top:1px solid #21262d; margin: 16px 0 18px 0;'>", unsafe_allow_html=True)
+
+    # C. Infrastructure State
+    st.markdown("### Infrastructure State")
+    
+    if exec_mode == "Compare Both — Baseline vs Random Forest":
+        view_env_choice = st.radio(
+            "Display Pool",
+            ["Baseline Environment State", "Random Forest Environment State"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+        active_env = st.session_state.env_baseline if view_env_choice.startswith("Baseline") else st.session_state.env_rf
+    elif exec_mode == "Baseline Only":
+        active_env = st.session_state.env_baseline
+    else:
+        active_env = st.session_state.env_rf
+
+    vms = list(active_env.vms.values())
+    if not vms:
+        st.info("No VMs provisioned yet. Create your first VM from VM Management below.")
+    else:
+        num_cards = len(vms)
+        cols_per_row = 4 if num_cards >= 4 else (3 if num_cards == 3 else 2)
+        grid_rows = [vms[i:i + cols_per_row] for i in range(0, len(vms), cols_per_row)]
+        
+        for row in grid_rows:
+            card_cols = st.columns(cols_per_row)
+            for idx, vm in enumerate(row):
+                with card_cols[idx]:
+                    c_pct = vm.cpu_utilization
+                    m_pct = vm.memory_utilization
+                    i_pct = vm.io_utilization
+
+
+    st.info("Simulation infrastructure loading...")
