@@ -81,6 +81,17 @@ class VM:
     def network_utilization(self) -> float:
         return self._calc_util(self.net_alloc, self.net_cap)
 
+    def clone(self) -> 'VM':
+        """Creates an independent deep copy of the VM state."""
+        new_vm = VM(self.vm_id, self.cpu_cap, self.mem_cap, self.io_cap, self.net_cap)
+        new_vm.cpu_alloc = self.cpu_alloc
+        new_vm.mem_alloc = self.mem_alloc
+        new_vm.io_alloc = self.io_alloc
+        new_vm.net_alloc = self.net_alloc
+        new_vm.active_workloads = self.active_workloads
+        new_vm.status = self.status
+        return new_vm
+
     def to_dict(self) -> dict:
         """Returns the VM state as a dictionary."""
         return {
