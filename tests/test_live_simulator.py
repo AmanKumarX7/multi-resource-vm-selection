@@ -283,3 +283,64 @@ class TestMLSelectorPipelinePathCompatibility:
             assert sel_by_pipe.pipeline_path == ml_sel.pipeline_path
 
 
+@pytest.mark.skipif(not db_is_available(), reason="MySQL database not available")
+class TestMySQLPersistenceAndRestart:
+    """Verifies database writes, restart persistence, and transparency introspection."""
+
+    def test_vm_and_workload_persistence_and_reload(self):
+        # 1. Initialize persistent state
+        bundle = initialize_persistent_state()
+        exp_id = bundle["live_exp_id"]
+        assert exp_id is not None
+
+        # 2. Add test VM and Workload
+        test_vm = VM("PTest_Node_1", 3000.0, 16.0, 6000.0, 1200.0)
+        ok_vm, msg_vm = sync_add_vm(test_vm, bundle["env_baseline"], bundle["env_rf"], bundle["saved_vms"], exp_id)
+        assert ok_vm is True
+
+        test_wl = Workload("PTest_WL_1", "web_server", 250.0, 2.0, 400.0, 300.0, 0, 10)
+        ok_wl, msg_wl = sync_add_workload(test_wl, bundle["saved_workloads"], exp_id)
+        assert ok_wl is True
+
+        # 3. Simulate application restart: call initialize_persistent_state() afresh
+        reloaded_bundle = initialize_persistent_state()
+        assert "PTest_Node_1" in reloaded_bundle["saved_vms"]
+        assert reloaded_bundle["saved_vms"]["PTest_Node_1"].cpu_cap == 3000.0
+        assert "PTest_WL_1" in reloaded_bundle["saved_workloads"]
+        assert reloaded_bundle["saved_workloads"]["PTest_WL_1"].cpu_req == 250.0
+
+        # 4. Clean up test artifacts
+        sync_delete_vm("PTest_Node_1", reloaded_bundle["env_baseline"], reloaded_bundle["env_rf"], reloaded_bundle["saved_vms"], exp_id)
+        sync_delete_workload("PTest_WL_1", reloaded_bundle["saved_workloads"], exp_id)
+
+    def test_simulation_event_logging_and_filtering(self):
+        bundle = initialize_persistent_state()
+        exp_id = bundle["live_exp_id"]
+        assert exp_id is not None
+
+        SimulationEventRepository.log_event(
+            experiment_id=exp_id,
+            event_type="ALLOCATION_DECISION",
+            algorithm="BASELINE",
+            workload_id="WL_Evt_Test",
+            vm_id="Node_Evt",
+            result="SUCCESS",
+            message="Test event log verification"
+        )
+
+        events = SimulationEventRepository.get_recent_events(limit=5, experiment_id=exp_id, event_type="ALLOCATION_DECISION")
+        assert len(events) > 0
+        assert any(e["workload_id"] == "WL_Evt_Test" for e in events)
+
+    def test_system_repository_introspection(self):
+        stat = SystemRepository.get_database_status()
+        assert stat["connected"] is True
+        assert stat["database"] == "vm_selection_research"
+        assert "vms" in stat["counts"]
+        assert "workloads" in stat["counts"]
+        assert "allocation_decisions" in stat["counts"]
+        assert "simulation_events" in stat["counts"]
+
+        # Introspect recent records
+        recent_vms = SystemRepository.get_recent_records("vms", limit=5)
+        assert isinstance(recent_vms, list)
