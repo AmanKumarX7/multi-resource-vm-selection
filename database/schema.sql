@@ -49,9 +49,9 @@ CREATE TABLE IF NOT EXISTS resource_metrics (
     net_util FLOAT NOT NULL,
     active_workloads INT NOT NULL,
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (vm_internal_id) REFERENCES vms(internal_id) ON DELETE CASCADE
+    FOREIGN KEY (vm_internal_id) REFERENCES vms(internal_id) ON DELETE CASCADE,
+    INDEX idx_resource_metrics_vm_tick (vm_internal_id, tick)
 );
-CREATE INDEX idx_resource_metrics_vm_tick ON resource_metrics(vm_internal_id, tick);
 
 -- 5. Allocation Decisions
 CREATE TABLE IF NOT EXISTS allocation_decisions (
@@ -65,9 +65,9 @@ CREATE TABLE IF NOT EXISTS allocation_decisions (
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (experiment_id) REFERENCES experiments(experiment_id) ON DELETE CASCADE,
     FOREIGN KEY (workload_internal_id) REFERENCES workloads(internal_id) ON DELETE CASCADE,
-    FOREIGN KEY (vm_internal_id) REFERENCES vms(internal_id) ON DELETE CASCADE
+    FOREIGN KEY (vm_internal_id) REFERENCES vms(internal_id) ON DELETE CASCADE,
+    INDEX idx_alloc_decision_experiment (experiment_id, method)
 );
-CREATE INDEX idx_alloc_decision_experiment ON allocation_decisions(experiment_id, method);
 
 -- 6. Experiment Results
 CREATE TABLE IF NOT EXISTS experiment_results (
@@ -98,4 +98,19 @@ CREATE TABLE IF NOT EXISTS model_metrics (
     step INT,
     recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (run_id) REFERENCES model_runs(run_id) ON DELETE CASCADE
+);
+
+-- 9. Simulation Events (Additive for Phase-II Live Simulator transparency)
+CREATE TABLE IF NOT EXISTS simulation_events (
+    event_id INT AUTO_INCREMENT PRIMARY KEY,
+    experiment_id INT NOT NULL,
+    event_type VARCHAR(50) NOT NULL,
+    algorithm VARCHAR(50),
+    workload_id VARCHAR(100),
+    vm_id VARCHAR(100),
+    result VARCHAR(50),
+    message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES experiments(experiment_id) ON DELETE CASCADE,
+    INDEX idx_sim_events_exp (experiment_id, event_type)
 );
