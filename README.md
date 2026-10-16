@@ -44,18 +44,15 @@ Run a command-line comparison experiment:
 venv\Scripts\python scripts/run_experiment.py --vms 50 --workloads 100 --seed 42
 ```
 
-## Run Dashboard
-To interactively view the research experiments, start the Streamlit dashboard:
+## Run Live Simulator Dashboard
+To launch the Phase-II Live Interactive Simulator and research console:
 ```bash
-venv\Scripts\streamlit run src/ui/dashboard.py
+.\venv\Scripts\python.exe -m streamlit run src/ui/dashboard.py
 ```
 
 ## Testing
-To run the full test suite (including simulation bounds, deterministic selectors, ML pipelines, and UI integration):
+To run the full test suite (including simulation bounds, deterministic selectors, ML pipelines, MySQL persistence, and Live Simulator integration):
 ```bash
-venv\Scripts\pytest
+.\venv\Scripts\python.exe -m pytest -v
 ```
-
-
-cd D:\5th_SEM_PBL
-.\venv\Scripts\python.exe -m streamlit run src\ui\dashboard.py
+*(48 tests passing across unit, algorithm, ML pipeline, database persistence, and UI integration modules).*
