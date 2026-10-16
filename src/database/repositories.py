@@ -416,3 +416,74 @@ class SimulationEventRepository:
             logger.error(f"Failed to get simulation events: {e}")
             return []
 
+class SystemRepository:
+    """Repository providing database introspection and teacher verification views."""
+    
+    ALLOWED_TABLES = [
+        "vms", "workloads", "allocation_decisions", "simulation_events", 
+        "experiments", "experiment_results", "model_runs", "model_metrics"
+    ]
+
+    @staticmethod
+    def get_database_status() -> dict:
+        """Queries genuine MySQL status, table list, and row counts."""
+        from .connection import DatabaseConfig
+        config = DatabaseConfig.load_config()
+        status = {
+            "connected": False,
+            "database": config["database"],
+            "host": config["host"],
+            "port": config["port"],
+            "tables": [],
+            "counts": {},
+            "latest_timestamp": None,
+            "error": None
+        }
+        try:
+            with get_db_connection() as conn:
+                status["connected"] = True
+                with conn.cursor() as cursor:
+                    cursor.execute("SHOW TABLES")
+                    tables = [row[0] for row in cursor.fetchall()]
+                    status["tables"] = tables
+                    
+                    counts = {}
+                    for tbl in tables:
+                        if tbl in SystemRepository.ALLOWED_TABLES:
+                            cursor.execute(f"SELECT COUNT(*) FROM `{tbl}`")
+                            counts[tbl] = cursor.fetchone()[0]
+                    status["counts"] = counts
+                    
+                    # Fetch most recent timestamp from decisions or events
+                    cursor.execute("""
+                        SELECT MAX(latest) FROM (
+                            SELECT MAX(recorded_at) AS latest FROM allocation_decisions
+                            UNION
+                            SELECT MAX(created_at) AS latest FROM simulation_events
+                            UNION
+                            SELECT MAX(created_at) AS latest FROM experiments
+                        ) AS combined
+                    """)
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        status["latest_timestamp"] = str(row[0])
+        except Exception as e:
+            status["connected"] = False
+            status["error"] = str(e)
+            logger.error(f"Database status check failed: {e}")
+        return status
+
+    @staticmethod
+    def get_recent_records(table_name: str, limit: int = 10) -> list:
+        """Fetches the latest rows from a verified table for teacher review."""
+        if table_name not in SystemRepository.ALLOWED_TABLES:
+            raise ValueError(f"Table {table_name} is not permitted for inspection.")
+        query = f"SELECT * FROM `{table_name}` ORDER BY 1 DESC LIMIT %s"
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(dictionary=True) as cursor:
+                    cursor.execute(query, (limit,))
+                    return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to fetch records from {table_name}: {e}")
+            return []
