@@ -331,3 +331,262 @@ def sync_delete_workload(workload_id: str, saved_workloads: Dict[str, Workload],
     return True, f"Deleted workload '{workload_id}'."
 
 
+def evaluate_fair_allocation(
+    mode: str,
+    workload: Workload,
+    env_baseline: SimulationEnvironment,
+    env_rf: SimulationEnvironment,
+    baseline_selector: BaselineSelector,
+    ml_selector: Optional[MLSelector] = None,
+    exp_id: Optional[int] = None,
+    current_tick: int = 0,
+    experiment_id: Optional[int] = None
+) -> dict:
+    """
+    Evaluates an incoming workload fairly.
+    In 'Compare Both' mode:
+    - Baseline evaluates against its isolated environment.
+    - Random Forest evaluates against its isolated environment.
+    - Both decisions and performance metrics are tracked separately and logged to MySQL.
+    """
+    effective_exp_id = exp_id if exp_id is not None else experiment_id
+    result = {
+        "workload": workload,
+        "mode": mode,
+        "tick": current_tick,
+        "baseline": None,
+        "rf": None,
+        "match_summary": ""
+    }
+    
+    run_baseline = mode.startswith("Compare") or "Baseline" in mode
+    run_rf = mode.startswith("Compare") or "Random Forest" in mode
+
+    # 1. Baseline Evaluation
+    if run_baseline:
+        feasible_base = env_baseline.get_feasible_vms(workload)
+        t0 = time.perf_counter_ns()
+        selected_base, _ = baseline_selector.select_vm(feasible_base, workload)
+        dt_base_sec = (time.perf_counter_ns() - t0) / 1_000_000_000.0
+        dt_base_ms = dt_base_sec * 1000.0
+        
+        success_base = False
+        reason_base = ""
+        if not feasible_base:
+            reason_base = "Rejected: Insufficient capacity on all provisioned VMs."
+        elif selected_base:
+            success_base = env_baseline.allocate_workload(selected_base.vm_id, workload)
+            reason_base = f"Selected least resultant weighted load ({selected_base.vm_id})"
+        else:
+            reason_base = "Rejected by selector."
+            
+        result["baseline"] = {
+            "selected_vm": selected_base.vm_id if selected_base else None,
+            "feasible_count": len(feasible_base),
+            "decision_time_ms": dt_base_ms,
+            "decision_time_sec": dt_base_sec,
+            "success": success_base,
+            "reason": reason_base,
+            "vm_state_after": selected_base.to_dict() if (selected_base and success_base) else None
+        }
+        
+        # Log to MySQL
+        if effective_exp_id:
+            try:
+                wl_int_id = WorkloadRepository.get_workload_internal_id(workload.workload_id, effective_exp_id)
+                vm_int_id = VMRepository.get_vm_internal_id(selected_base.vm_id, effective_exp_id) if selected_base else None
+                if wl_int_id:
+                    AllocationRepository.log_decision(
+                        experiment_id=effective_exp_id,
+                        workload_internal_id=wl_int_id,
+                        vm_internal_id=vm_int_id,
+                        method="baseline",
+                        decision_time=dt_base_sec,
+                        is_successful=success_base
+                    )
+                SimulationEventRepository.log_event(
+                    experiment_id=effective_exp_id,
+                    event_type="ALLOCATION_DECISION",
+                    algorithm="BASELINE",
+                    workload_id=workload.workload_id,
+                    vm_id=selected_base.vm_id if selected_base else None,
+                    result="SUCCESS" if success_base else "REJECTED",
+                    message=f"Baseline -> {selected_base.vm_id if selected_base else 'None'} in {dt_base_ms:.3f} ms. {reason_base}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to log Baseline decision to MySQL: {e}")
+
+    # 2. Random Forest Evaluation
+    if run_rf:
+        feasible_rf = env_rf.get_feasible_vms(workload)
+        if ml_selector is None:
+            result["rf"] = {
+                "selected_vm": None,
+                "feasible_count": len(feasible_rf),
+                "decision_time_ms": 0.0,
+                "decision_time_sec": 0.0,
+                "success": False,
+                "reason": "Error: Random Forest model artifact is unavailable or not loaded.",
+                "vm_state_after": None,
+                "error": True
+            }
+        else:
+            t0 = time.perf_counter_ns()
+            try:
+                selected_rf, _ = ml_selector.select_vm(feasible_rf, workload)
+                dt_rf_sec = (time.perf_counter_ns() - t0) / 1_000_000_000.0
+                dt_rf_ms = dt_rf_sec * 1000.0
+                
+                success_rf = False
+                reason_rf = ""
+                if not feasible_rf:
+                    reason_rf = "Rejected: Insufficient capacity on all provisioned VMs."
+                elif selected_rf:
+                    success_rf = env_rf.allocate_workload(selected_rf.vm_id, workload)
+                    reason_rf = f"Selected highest predicted multi-resource suitability ({selected_rf.vm_id})"
+                else:
+                    reason_rf = "Rejected by ML selector."
+                    
+                result["rf"] = {
+                    "selected_vm": selected_rf.vm_id if selected_rf else None,
+                    "feasible_count": len(feasible_rf),
+                    "decision_time_ms": dt_rf_ms,
+                    "decision_time_sec": dt_rf_sec,
+                    "success": success_rf,
+                    "reason": reason_rf,
+                    "vm_state_after": selected_rf.to_dict() if (selected_rf and success_rf) else None,
+                    "error": None
+                }
+                
+                # Log to MySQL
+                if effective_exp_id:
+                    try:
+                        wl_int_id = WorkloadRepository.get_workload_internal_id(workload.workload_id, effective_exp_id)
+                        vm_int_id = VMRepository.get_vm_internal_id(selected_rf.vm_id, effective_exp_id) if selected_rf else None
+                        if wl_int_id:
+                            AllocationRepository.log_decision(
+                                experiment_id=effective_exp_id,
+                                workload_internal_id=wl_int_id,
+                                vm_internal_id=vm_int_id,
+                                method="random_forest",
+                                decision_time=dt_rf_sec,
+                                is_successful=success_rf
+                            )
+                        SimulationEventRepository.log_event(
+                            experiment_id=effective_exp_id,
+                            event_type="ALLOCATION_DECISION",
+                            algorithm="RANDOM_FOREST",
+                            workload_id=workload.workload_id,
+                            vm_id=selected_rf.vm_id if selected_rf else None,
+                            result="SUCCESS" if success_rf else "REJECTED",
+                            message=f"Random Forest -> {selected_rf.vm_id if selected_rf else 'None'} in {dt_rf_ms:.3f} ms. {reason_rf}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to log Random Forest decision to MySQL: {e}")
+            except Exception as e:
+                result["rf"] = {
+                    "selected_vm": None,
+                    "feasible_count": len(feasible_rf),
+                    "decision_time_ms": 0.0,
+                    "decision_time_sec": 0.0,
+                    "success": False,
+                    "reason": f"Random Forest evaluation error: {e}",
+                    "vm_state_after": None,
+                    "error": str(e)
+                }
+
+    # Comparison summary for dual mode
+    if result["baseline"] and result["rf"]:
+        b_vm = result["baseline"]["selected_vm"]
+        r_vm = result["rf"]["selected_vm"]
+        if b_vm and r_vm:
+            if b_vm == r_vm:
+                result["match_summary"] = f"Identical Selection: Both algorithms selected {b_vm}."
+            else:
+                result["match_summary"] = f"Divergent Selection: Baseline selected {b_vm}, while Random Forest selected {r_vm}."
+        elif not b_vm and not r_vm:
+            result["match_summary"] = "Both algorithms rejected the workload due to identical feasibility constraints."
+        else:
+            result["match_summary"] = f"Partial Allocation: Baseline -> {b_vm or 'Rejected'} vs RF -> {r_vm or 'Rejected'}."
+            
+    return result
+
+
+def advance_simulation_tick(
+    env_baseline: SimulationEnvironment,
+    env_rf: SimulationEnvironment,
+    active_baseline: List[dict],
+    active_rf: List[dict],
+    current_tick: int,
+    exp_id: Optional[int]
+) -> Tuple[int, List[str]]:
+    """
+    Advances simulation by one tick, checks duration of active workloads,
+    and safely releases completed workloads.
+    """
+    next_tick = current_tick + 1
+    events = []
+    
+    # Check baseline active workloads
+    remaining_base = []
+    for item in active_baseline:
+        if item["expires_at"] <= next_tick:
+            env_baseline.release_workload(item["workload_id"])
+            msg = f"[Tick {next_tick}] Workload {item['workload_id']} completed on Baseline ({item['vm_id']})."
+            events.append(msg)
+            if exp_id:
+                SimulationEventRepository.log_event(
+                    experiment_id=exp_id,
+                    event_type="WORKLOAD_RELEASED",
+                    algorithm="BASELINE",
+                    workload_id=item["workload_id"],
+                    vm_id=item["vm_id"],
+                    result="COMPLETED",
+                    message=msg
+                )
+        else:
+            remaining_base.append(item)
+    active_baseline.clear()
+    active_baseline.extend(remaining_base)
+
+    # Check Random Forest active workloads
+    remaining_rf = []
+    for item in active_rf:
+        if item["expires_at"] <= next_tick:
+            env_rf.release_workload(item["workload_id"])
+            msg = f"[Tick {next_tick}] Workload {item['workload_id']} completed on RF ({item['vm_id']})."
+            events.append(msg)
+            if exp_id:
+                SimulationEventRepository.log_event(
+                    experiment_id=exp_id,
+                    event_type="WORKLOAD_RELEASED",
+                    algorithm="RANDOM_FOREST",
+                    workload_id=item["workload_id"],
+                    vm_id=item["vm_id"],
+                    result="COMPLETED",
+                    message=msg
+                )
+        else:
+            remaining_rf.append(item)
+    active_rf.clear()
+    active_rf.extend(remaining_rf)
+    
+    return next_tick, events
+
+
+def reset_simulation(
+    env_baseline: SimulationEnvironment,
+    env_rf: SimulationEnvironment,
+    exp_id: Optional[int]
+):
+    """Resets live allocation states safely without deleting persistent definitions."""
+    env_baseline.reset_allocations()
+    env_rf.reset_allocations()
+    if exp_id:
+        SimulationEventRepository.log_event(
+            experiment_id=exp_id,
+            event_type="SIMULATION_RESET",
+            algorithm="SYSTEM",
+            result="SUCCESS",
+            message="Simulator state reset to 0. VM and workload persistent inventory retained."
+        )
