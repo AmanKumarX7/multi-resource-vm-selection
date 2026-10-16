@@ -73,6 +73,52 @@ class SimulationEnvironment:
         
         return True
 
+    def remove_vm(self, vm_id: str) -> bool:
+        """Removes a VM only if it has no active allocations."""
+        if vm_id not in self.vms:
+            return False
+        vm = self.vms[vm_id]
+        if vm.active_workloads > 0:
+            logger.warning(f"Cannot delete VM {vm_id}: has {vm.active_workloads} active workloads.")
+            return False
+        del self.vms[vm_id]
+        return True
+
+    def update_vm(self, vm_id: str, cpu_cap: float, mem_cap: float, io_cap: float, net_cap: float) -> bool:
+        """Updates VM capacities safely ensuring new capacities are not below current allocations."""
+        if vm_id not in self.vms:
+            return False
+        vm = self.vms[vm_id]
+        if (cpu_cap < vm.cpu_alloc or mem_cap < vm.mem_alloc or 
+            io_cap < vm.io_alloc or net_cap < vm.net_alloc):
+            logger.warning(f"Unsafe capacity reduction for VM {vm_id} below current allocations.")
+            return False
+        vm.cpu_cap = max(0.0, cpu_cap)
+        vm.mem_cap = max(0.0, mem_cap)
+        vm.io_cap = max(0.0, io_cap)
+        vm.net_cap = max(0.0, net_cap)
+        return True
+
+    def clone(self) -> 'SimulationEnvironment':
+        """Creates an isolated simulation environment with identical VM states."""
+        new_env = SimulationEnvironment()
+        for vm_id, vm in self.vms.items():
+            new_env.vms[vm_id] = vm.clone()
+        new_env.allocations = dict(self.allocations)
+        new_env.workloads = {w_id: Workload(w.workload_id, w.workload_type, w.cpu_req, w.mem_req, w.io_req, w.net_req, w.arrival_time, w.duration) for w_id, w in self.workloads.items()}
+        return new_env
+
+    def reset_allocations(self):
+        """Resets all live allocations back to 0 without deleting the VM definitions."""
+        for vm in self.vms.values():
+            vm.cpu_alloc = 0.0
+            vm.mem_alloc = 0.0
+            vm.io_alloc = 0.0
+            vm.net_alloc = 0.0
+            vm.active_workloads = 0
+        self.allocations.clear()
+        self.workloads.clear()
+
     def get_system_state(self) -> List[dict]:
         """Returns state representations for all VMs."""
         return [vm.to_dict() for vm in self.vms.values()]
