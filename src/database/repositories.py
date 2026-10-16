@@ -46,6 +46,26 @@ class ExperimentRepository:
             logger.error(f"Failed to get experiment results: {e}")
             raise
 
+    @staticmethod
+    def get_or_create_live_experiment() -> int:
+        """Retrieves or creates the designated experiment for persistent Live Simulator state."""
+        select_query = "SELECT experiment_id FROM experiments WHERE name = 'LIVE_SIMULATOR_STORE' LIMIT 1"
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(dictionary=True) as cursor:
+                    cursor.execute(select_query)
+                    row = cursor.fetchone()
+                    if row:
+                        return row['experiment_id']
+        except Exception as e:
+            logger.error(f"Error checking live experiment: {e}")
+
+        # If not found or on fresh DB, create it
+        return ExperimentRepository.create_experiment(
+            name="LIVE_SIMULATOR_STORE",
+            description="Phase-II Live Interactive Simulator Persistent Store"
+        )
+
 class VMRepository:
     """Repository handling insertions for VMs."""
     
@@ -66,29 +86,96 @@ class VMRepository:
             logger.error(f"Failed to insert VMs: {e}")
             raise
 
-class WorkloadRepository:
-    """Repository handling insertions for Workloads."""
-    
     @staticmethod
-    def insert_workloads(experiment_id: int, workloads: list) -> dict:
-        """Inserts Workloads and returns a mapping of workload_id -> internal_id."""
-        query = """INSERT INTO workloads (experiment_id, workload_id, workload_type, 
-                   cpu_req, mem_req, io_req, net_req, arrival_time, duration) 
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-        mapping = {}
+    def insert_single_vm(experiment_id: int, vm) -> int:
+        """Inserts a single VM definition into MySQL."""
+        query = "INSERT INTO vms (experiment_id, vm_id, cpu_cap, mem_cap, io_cap, net_cap) VALUES (%s, %s, %s, %s, %s, %s)"
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cursor:
-                    for wl in workloads:
-                        cursor.execute(query, (experiment_id, wl.workload_id, wl.workload_type, 
-                                               wl.cpu_req, wl.mem_req, wl.io_req, wl.net_req, 
-                                               wl.arrival_time, wl.duration))
-                        mapping[wl.workload_id] = cursor.lastrowid
+                    cursor.execute(query, (experiment_id, vm.vm_id, vm.cpu_cap, vm.mem_cap, vm.io_cap, vm.net_cap))
                     conn.commit()
-            return mapping
+                    return cursor.lastrowid
         except Exception as e:
-            logger.error(f"Failed to insert workloads: {e}")
+            logger.error(f"Failed to insert single VM: {e}")
             raise
+
+    @staticmethod
+    def update_vm_capacity(vm_id: str, cpu_cap: float, mem_cap: float, io_cap: float, net_cap: float, experiment_id: int = None) -> bool:
+        """Updates capacities of an existing VM."""
+        if experiment_id:
+            query = """UPDATE vms SET cpu_cap = %s, mem_cap = %s, io_cap = %s, net_cap = %s 
+                       WHERE vm_id = %s AND experiment_id = %s"""
+            params = (cpu_cap, mem_cap, io_cap, net_cap, vm_id, experiment_id)
+        else:
+            query = """UPDATE vms SET cpu_cap = %s, mem_cap = %s, io_cap = %s, net_cap = %s 
+                       WHERE vm_id = %s"""
+            params = (cpu_cap, mem_cap, io_cap, net_cap, vm_id)
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query, params)
+                    conn.commit()
+                    return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Failed to update VM {vm_id}: {e}")
+            raise
+
+    @staticmethod
+    def delete_vm(vm_id: str, experiment_id: int = None) -> bool:
+        """Deletes a VM definition from MySQL."""
+        if experiment_id:
+            query = "DELETE FROM vms WHERE vm_id = %s AND experiment_id = %s"
+            params = (vm_id, experiment_id)
+        else:
+            query = "DELETE FROM vms WHERE vm_id = %s"
+            params = (vm_id,)
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query, params)
+                    conn.commit()
+                    return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Failed to delete VM {vm_id}: {e}")
+            raise
+
+    @staticmethod
+    def get_vms(experiment_id: int = None) -> list:
+        """Retrieves persistent VM records from MySQL."""
+        if experiment_id:
+            query = "SELECT internal_id, experiment_id, vm_id, cpu_cap, mem_cap, io_cap, net_cap, created_at FROM vms WHERE experiment_id = %s ORDER BY internal_id ASC"
+            params = (experiment_id,)
+        else:
+            query = "SELECT internal_id, experiment_id, vm_id, cpu_cap, mem_cap, io_cap, net_cap, created_at FROM vms ORDER BY internal_id ASC"
+            params = ()
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(dictionary=True) as cursor:
+                    cursor.execute(query, params)
+                    return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to fetch VMs: {e}")
+            raise
+
+    @staticmethod
+    def get_vm_internal_id(vm_id: str, experiment_id: int = None) -> int:
+        """Looks up the database internal_id for a given vm_id string."""
+        if experiment_id:
+            query = "SELECT internal_id FROM vms WHERE vm_id = %s AND experiment_id = %s LIMIT 1"
+            params = (vm_id, experiment_id)
+        else:
+            query = "SELECT internal_id FROM vms WHERE vm_id = %s ORDER BY internal_id DESC LIMIT 1"
+            params = (vm_id,)
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(dictionary=True) as cursor:
+                    cursor.execute(query, params)
+                    row = cursor.fetchone()
+                    return row['internal_id'] if row else None
+        except Exception as e:
+            logger.error(f"Failed to find VM internal ID: {e}")
+            return None
 
 class ModelRepository:
     """Repository handling insertions for ML model tracking."""
@@ -137,7 +224,6 @@ class AllocationRepository:
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cursor:
-                    # Treat vm_internal_id as NULL if it's None or < 0
                     v_id = vm_internal_id if (vm_internal_id is not None and vm_internal_id >= 0) else None
                     cursor.execute(query, (experiment_id, workload_internal_id, v_id, method, decision_time, is_successful))
                     conn.commit()
@@ -145,3 +231,4 @@ class AllocationRepository:
         except Exception as e:
             logger.error(f"Failed to log allocation decision: {e}")
             raise
+
