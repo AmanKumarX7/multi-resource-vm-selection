@@ -16,11 +16,14 @@ class MLSelector:
     It predicts the suitability score for each feasible VM candidate and chooses the highest.
     """
     
-    def __init__(self, model_path: str):
-        self.model_path = model_path
+    def __init__(self, model_path: Optional[str] = None, pipeline_path: Optional[str] = None):
+        self.model_path = model_path or pipeline_path
+        if not self.model_path:
+            raise ValueError("A valid model_path or pipeline_path must be provided.")
+            
         try:
             self.model, self.preprocessor = ModelPersistence.load_pipeline(self.model_path)
-            logger.info(f"Successfully loaded ML pipeline from {model_path}")
+            logger.info(f"Successfully loaded ML pipeline from {self.model_path}")
         except FileNotFoundError as e:
             logger.error(f"Failed to load ML model: {e}")
             raise
@@ -29,6 +32,11 @@ class MLSelector:
             raise
             
         self.feature_extractor = DatasetGenerator(seed=0) # Need just the extract_features method
+
+    @property
+    def pipeline_path(self) -> str:
+        """Consistent accessor for model pipeline path."""
+        return self.model_path
 
     def select_vm(self, feasible_vms: List[VM], workload: Workload) -> Tuple[Optional[VM], float]:
         """
