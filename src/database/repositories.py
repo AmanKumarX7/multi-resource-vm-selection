@@ -358,3 +358,61 @@ class AllocationRepository:
             logger.error(f"Failed to log allocation decision: {e}")
             raise
 
+class SimulationEventRepository:
+    """Repository handling event history for Live Simulator tracking."""
+    
+    @staticmethod
+    def log_event(experiment_id: int, event_type: str, algorithm: str = None, 
+                  workload_id: str = None, vm_id: str = None, result: str = None, 
+                  message: str = "") -> int:
+        """Records an operational simulation event into MySQL."""
+        query = """
+            INSERT INTO simulation_events 
+            (experiment_id, event_type, algorithm, workload_id, vm_id, result, message) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query, (experiment_id, event_type, algorithm, workload_id, vm_id, result, message))
+                    conn.commit()
+                    return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Failed to log simulation event: {e}")
+            return -1
+
+    @staticmethod
+    def get_recent_events(limit: int = 50, experiment_id: int = None, 
+                          event_type: str = None, algorithm: str = None) -> list:
+        """Retrieves simulation events with optional filtering."""
+        conditions = []
+        params = []
+        if experiment_id:
+            conditions.append("experiment_id = %s")
+            params.append(experiment_id)
+        if event_type and event_type != "All":
+            conditions.append("event_type = %s")
+            params.append(event_type)
+        if algorithm and algorithm != "All":
+            conditions.append("algorithm = %s")
+            params.append(algorithm)
+            
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        query = f"""
+            SELECT event_id, experiment_id, event_type, algorithm, workload_id, 
+                   vm_id, result, message, created_at 
+            FROM simulation_events 
+            {where_clause} 
+            ORDER BY event_id DESC 
+            LIMIT %s
+        """
+        params.append(limit)
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(dictionary=True) as cursor:
+                    cursor.execute(query, tuple(params))
+                    return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to get simulation events: {e}")
+            return []
+
