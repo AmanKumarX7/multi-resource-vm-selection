@@ -177,6 +177,132 @@ class VMRepository:
             logger.error(f"Failed to find VM internal ID: {e}")
             return None
 
+class WorkloadRepository:
+    """Repository handling insertions for Workloads."""
+    
+    @staticmethod
+    def insert_workloads(experiment_id: int, workloads: list) -> dict:
+        """Inserts Workloads and returns a mapping of workload_id -> internal_id."""
+        query = """INSERT INTO workloads (experiment_id, workload_id, workload_type, 
+                   cpu_req, mem_req, io_req, net_req, arrival_time, duration) 
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        mapping = {}
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    for wl in workloads:
+                        cursor.execute(query, (experiment_id, wl.workload_id, wl.workload_type, 
+                                               wl.cpu_req, wl.mem_req, wl.io_req, wl.net_req, 
+                                               wl.arrival_time, wl.duration))
+                        mapping[wl.workload_id] = cursor.lastrowid
+                    conn.commit()
+            return mapping
+        except Exception as e:
+            logger.error(f"Failed to insert workloads: {e}")
+            raise
+
+    @staticmethod
+    def insert_single_workload(experiment_id: int, wl) -> int:
+        """Inserts a single Workload definition into MySQL."""
+        query = """INSERT INTO workloads (experiment_id, workload_id, workload_type, 
+                   cpu_req, mem_req, io_req, net_req, arrival_time, duration) 
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query, (experiment_id, wl.workload_id, wl.workload_type, 
+                                           wl.cpu_req, wl.mem_req, wl.io_req, wl.net_req, 
+                                           wl.arrival_time, wl.duration))
+                    conn.commit()
+                    return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Failed to insert single workload: {e}")
+            raise
+
+    @staticmethod
+    def update_workload(workload_id: str, workload_type: str, cpu_req: float, mem_req: float, 
+                        io_req: float, net_req: float, duration: int, experiment_id: int = None) -> bool:
+        """Updates an existing workload definition."""
+        if experiment_id:
+            query = """UPDATE workloads SET workload_type = %s, cpu_req = %s, mem_req = %s, 
+                       io_req = %s, net_req = %s, duration = %s 
+                       WHERE workload_id = %s AND experiment_id = %s"""
+            params = (workload_type, cpu_req, mem_req, io_req, net_req, duration, workload_id, experiment_id)
+        else:
+            query = """UPDATE workloads SET workload_type = %s, cpu_req = %s, mem_req = %s, 
+                       io_req = %s, net_req = %s, duration = %s 
+                       WHERE workload_id = %s"""
+            params = (workload_type, cpu_req, mem_req, io_req, net_req, duration, workload_id)
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query, params)
+                    conn.commit()
+                    return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Failed to update workload {workload_id}: {e}")
+            raise
+
+    @staticmethod
+    def delete_workload(workload_id: str, experiment_id: int = None) -> bool:
+        """Deletes a workload definition from MySQL."""
+        if experiment_id:
+            query = "DELETE FROM workloads WHERE workload_id = %s AND experiment_id = %s"
+            params = (workload_id, experiment_id)
+        else:
+            query = "DELETE FROM workloads WHERE workload_id = %s"
+            params = (workload_id,)
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query, params)
+                    conn.commit()
+                    return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Failed to delete workload {workload_id}: {e}")
+            raise
+
+    @staticmethod
+    def get_workloads(experiment_id: int = None) -> list:
+        """Retrieves persistent workload records from MySQL."""
+        if experiment_id:
+            query = """SELECT internal_id, experiment_id, workload_id, workload_type, 
+                              cpu_req, mem_req, io_req, net_req, arrival_time, duration, created_at 
+                       FROM workloads WHERE experiment_id = %s ORDER BY internal_id ASC"""
+            params = (experiment_id,)
+        else:
+            query = """SELECT internal_id, experiment_id, workload_id, workload_type, 
+                              cpu_req, mem_req, io_req, net_req, arrival_time, duration, created_at 
+                       FROM workloads ORDER BY internal_id ASC"""
+            params = ()
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(dictionary=True) as cursor:
+                    cursor.execute(query, params)
+                    return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to fetch workloads: {e}")
+            raise
+
+    @staticmethod
+    def get_workload_internal_id(workload_id: str, experiment_id: int = None) -> int:
+        """Looks up the database internal_id for a given workload_id string."""
+        if experiment_id:
+            query = "SELECT internal_id FROM workloads WHERE workload_id = %s AND experiment_id = %s LIMIT 1"
+            params = (workload_id, experiment_id)
+        else:
+            query = "SELECT internal_id FROM workloads WHERE workload_id = %s ORDER BY internal_id DESC LIMIT 1"
+            params = (workload_id,)
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(dictionary=True) as cursor:
+                    cursor.execute(query, params)
+                    row = cursor.fetchone()
+                    return row['internal_id'] if row else None
+        except Exception as e:
+            logger.error(f"Failed to find workload internal ID: {e}")
+            return None
+
 class ModelRepository:
     """Repository handling insertions for ML model tracking."""
     
