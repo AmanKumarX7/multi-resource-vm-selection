@@ -127,3 +127,207 @@ def initialize_persistent_state() -> dict:
     }
 
 
+def seed_standard_workloads(saved_workloads: Dict[str, Workload], exp_id: Optional[int]) -> int:
+    """Helper to seed at least 10 realistic workload definitions into MySQL."""
+    added = 0
+    for item in DEFAULT_SEED_WORKLOADS:
+        wl = Workload(item["workload_id"], item["workload_type"], item["cpu_req"], 
+                      item["mem_req"], item["io_req"], item["net_req"], 0, item["duration"])
+        ok, _ = sync_add_workload(wl, saved_workloads, exp_id)
+        if ok:
+            added += 1
+    return added
+
+
+def sync_add_vm(vm: VM, env_baseline: SimulationEnvironment, env_rf: SimulationEnvironment, 
+                saved_vms: Dict[str, VM], exp_id: Optional[int]) -> Tuple[bool, str]:
+    """Adds a VM definition to MySQL and both isolated simulation environments."""
+    if vm.vm_id in env_baseline.vms:
+        if vm.vm_id.startswith("TestNode"):
+            env_baseline.remove_vm(vm.vm_id)
+            env_rf.remove_vm(vm.vm_id)
+            saved_vms.pop(vm.vm_id, None)
+        else:
+            return False, f"VM '{vm.vm_id}' already exists in live pool."
+        
+    if exp_id:
+        try:
+            existing_id = VMRepository.get_vm_internal_id(vm.vm_id, exp_id)
+            if existing_id:
+                VMRepository.update_vm_capacity(vm.vm_id, vm.cpu_cap, vm.mem_cap, vm.io_cap, vm.net_cap, experiment_id=exp_id)
+            else:
+                VMRepository.insert_single_vm(exp_id, vm)
+            SimulationEventRepository.log_event(
+                experiment_id=exp_id,
+                event_type="VM_CREATED",
+                algorithm="SYSTEM",
+                vm_id=vm.vm_id,
+                result="SUCCESS",
+                message=f"Provisioned VM {vm.vm_id} ({vm.cpu_cap} MHz, {vm.mem_cap} GB, {vm.io_cap} MB/s, {vm.net_cap} MB/s)"
+            )
+        except Exception as e:
+            logger.error(f"Failed to persist VM {vm.vm_id}: {e}")
+            return False, f"Database persistence failed: {e}"
+            
+    saved_vms[vm.vm_id] = vm
+    env_baseline.add_vm(vm.clone())
+    env_rf.add_vm(vm.clone())
+    return True, f"Successfully provisioned VM '{vm.vm_id}'."
+
+
+def sync_update_vm(vm_id: str, cpu_cap: float, mem_cap: float, io_cap: float, net_cap: float,
+                   env_baseline: SimulationEnvironment, env_rf: SimulationEnvironment,
+                   saved_vms: Dict[str, VM], exp_id: Optional[int]) -> Tuple[bool, str]:
+    """Safely updates VM capacities in MySQL and both environments."""
+    if vm_id not in saved_vms:
+        return False, f"VM '{vm_id}' not found."
+        
+    # Check if capacity reduction would violate current allocations in either env
+    base_vm = env_baseline.vms.get(vm_id)
+    rf_vm = env_rf.vms.get(vm_id)
+    
+    max_cpu_alloc = max(base_vm.cpu_alloc if base_vm else 0, rf_vm.cpu_alloc if rf_vm else 0)
+    max_mem_alloc = max(base_vm.mem_alloc if base_vm else 0, rf_vm.mem_alloc if rf_vm else 0)
+    max_io_alloc = max(base_vm.io_alloc if base_vm else 0, rf_vm.io_alloc if rf_vm else 0)
+    max_net_alloc = max(base_vm.net_alloc if base_vm else 0, rf_vm.net_alloc if rf_vm else 0)
+    
+    if (cpu_cap < max_cpu_alloc or mem_cap < max_mem_alloc or 
+        io_cap < max_io_alloc or net_cap < max_net_alloc):
+        return False, "Cannot reduce capacity below currently allocated resources on active workloads."
+        
+    if exp_id:
+        try:
+            VMRepository.update_vm_capacity(vm_id, cpu_cap, mem_cap, io_cap, net_cap, experiment_id=exp_id)
+            SimulationEventRepository.log_event(
+                experiment_id=exp_id,
+                event_type="VM_UPDATED",
+                algorithm="SYSTEM",
+                vm_id=vm_id,
+                result="SUCCESS",
+                message=f"Updated VM {vm_id} capacities to {cpu_cap} MHz, {mem_cap} GB, {io_cap} MB/s, {net_cap} MB/s"
+            )
+        except Exception as e:
+            return False, f"Database update failed: {e}"
+            
+    saved_vms[vm_id].cpu_cap = cpu_cap
+    saved_vms[vm_id].mem_cap = mem_cap
+    saved_vms[vm_id].io_cap = io_cap
+    saved_vms[vm_id].net_cap = net_cap
+    
+    env_baseline.update_vm(vm_id, cpu_cap, mem_cap, io_cap, net_cap)
+    env_rf.update_vm(vm_id, cpu_cap, mem_cap, io_cap, net_cap)
+    return True, f"Successfully updated capacities for VM '{vm_id}'."
+
+
+def sync_delete_vm(vm_id: str, env_baseline: SimulationEnvironment, env_rf: SimulationEnvironment,
+                   saved_vms: Dict[str, VM], exp_id: Optional[int]) -> Tuple[bool, str]:
+    """Deletes a VM if it has no active allocations in either environment."""
+    if vm_id not in saved_vms:
+        return False, f"VM '{vm_id}' not found."
+        
+    base_vm = env_baseline.vms.get(vm_id)
+    rf_vm = env_rf.vms.get(vm_id)
+    
+    if (base_vm and base_vm.active_workloads > 0) or (rf_vm and rf_vm.active_workloads > 0):
+        return False, f"Cannot delete VM '{vm_id}': has active workloads."
+        
+    if exp_id:
+        try:
+            VMRepository.delete_vm(vm_id, experiment_id=exp_id)
+            SimulationEventRepository.log_event(
+                experiment_id=exp_id,
+                event_type="VM_DELETED",
+                algorithm="SYSTEM",
+                vm_id=vm_id,
+                result="SUCCESS",
+                message=f"Safely removed VM {vm_id}"
+            )
+        except Exception as e:
+            return False, f"Database delete failed: {e}"
+            
+    del saved_vms[vm_id]
+    env_baseline.remove_vm(vm_id)
+    env_rf.remove_vm(vm_id)
+    return True, f"Successfully removed VM '{vm_id}'."
+
+
+def sync_add_workload(wl: Workload, saved_workloads: Dict[str, Workload], 
+                      exp_id: Optional[int]) -> Tuple[bool, str]:
+    """Saves a workload definition to MySQL and the persistent dictionary."""
+    if exp_id:
+        try:
+            existing_id = WorkloadRepository.get_workload_internal_id(wl.workload_id, exp_id)
+            if existing_id:
+                WorkloadRepository.update_workload(
+                    wl.workload_id, wl.workload_type, wl.cpu_req, wl.mem_req, wl.io_req, wl.net_req, wl.duration, experiment_id=exp_id
+                )
+            else:
+                WorkloadRepository.insert_single_workload(exp_id, wl)
+            SimulationEventRepository.log_event(
+                experiment_id=exp_id,
+                event_type="WORKLOAD_CREATED",
+                algorithm="SYSTEM",
+                workload_id=wl.workload_id,
+                result="SUCCESS",
+                message=f"Created workload {wl.workload_id} ({wl.workload_type})"
+            )
+        except Exception as e:
+            return False, f"Database persistence failed: {e}"
+            
+    saved_workloads[wl.workload_id] = wl
+    return True, f"Saved workload '{wl.workload_id}'."
+
+
+def sync_update_workload(workload_id: str, workload_type: str, cpu_req: float, mem_req: float,
+                         io_req: float, net_req: float, duration: int,
+                         saved_workloads: Dict[str, Workload], exp_id: Optional[int]) -> Tuple[bool, str]:
+    """Updates an existing workload definition in MySQL and persistent dictionary."""
+    if workload_id not in saved_workloads:
+        return False, f"Workload '{workload_id}' not found."
+        
+    if exp_id:
+        try:
+            WorkloadRepository.update_workload(
+                workload_id, workload_type, cpu_req, mem_req, io_req, net_req, duration, experiment_id=exp_id
+            )
+            SimulationEventRepository.log_event(
+                experiment_id=exp_id,
+                event_type="WORKLOAD_UPDATED",
+                algorithm="SYSTEM",
+                workload_id=workload_id,
+                result="SUCCESS",
+                message=f"Updated workload {workload_id} requirements"
+            )
+        except Exception as e:
+            return False, f"Database update failed: {e}"
+            
+    saved_workloads[workload_id] = Workload(
+        workload_id, workload_type, cpu_req, mem_req, io_req, net_req, 0, duration
+    )
+    return True, f"Updated workload '{workload_id}'."
+
+
+def sync_delete_workload(workload_id: str, saved_workloads: Dict[str, Workload],
+                         exp_id: Optional[int]) -> Tuple[bool, str]:
+    """Deletes a workload definition from MySQL and dictionary."""
+    if workload_id not in saved_workloads:
+        return False, f"Workload '{workload_id}' not found."
+        
+    if exp_id:
+        try:
+            WorkloadRepository.delete_workload(workload_id, experiment_id=exp_id)
+            SimulationEventRepository.log_event(
+                experiment_id=exp_id,
+                event_type="WORKLOAD_DELETED",
+                algorithm="SYSTEM",
+                workload_id=workload_id,
+                result="SUCCESS",
+                message=f"Removed workload definition {workload_id}"
+            )
+        except Exception as e:
+            return False, f"Database delete failed: {e}"
+            
+    del saved_workloads[workload_id]
+    return True, f"Deleted workload '{workload_id}'."
+
+
