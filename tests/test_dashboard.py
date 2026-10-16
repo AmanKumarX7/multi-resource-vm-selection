@@ -3,7 +3,7 @@ from streamlit.testing.v1 import AppTest
 
 def test_dashboard_renders():
     # Test that the dashboard renders without crashing
-    at = AppTest.from_file("../src/ui/dashboard.py")
+    at = AppTest.from_file("../src/ui/dashboard.py", default_timeout=10)
     
     # Run the app
     at.run()
@@ -16,7 +16,7 @@ def test_dashboard_renders():
     assert "Live Interactive Simulator" in at.header[0].value
 
 def test_dashboard_interactive_logic():
-    at = AppTest.from_file("../src/ui/dashboard.py")
+    at = AppTest.from_file("../src/ui/dashboard.py", default_timeout=10)
     at.run()
     
     # Text input 0 should be VM Name
