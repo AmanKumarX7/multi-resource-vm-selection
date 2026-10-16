@@ -42,6 +42,18 @@
 - [x] **Milestone 12**: Created strict preflight validation script (`scripts/preflight.py`) to verify environment capabilities cleanly.
 - [x] Created seamless `run_demo.bat` to package preflight, smoke testing, and UI dashboard spinning into a double-click experience.
 - [x] Drafted `TEACHER_DEMO_GUIDE.md` and finalized repository-friendly instruction paths.
+- [x] **Phase-II Milestone — Live Simulator Redesign & Functional Integration**:
+  - [x] Redesigned `src/ui/dashboard.py` into a dark infrastructure-management console with clean block layout.
+  - [x] Placed Algorithm Execution Mode (`Compare Both`, `Baseline Only`, `Random Forest Only`) at the top of the Live Simulator.
+  - [x] Enforced state isolation via independent cloned environments (`env_baseline`, `env_rf`) ensuring 100% fair comparison from equivalent initial states.
+  - [x] Standardized physical resource units across the whole project (`src/simulation/units.py`): CPU (MHz), RAM (GB), Disk I/O (MB/s), Network (MB/s), Duration (ticks), Decision Time (ms).
+  - [x] Full MySQL CRUD persistence for VMs (`vms`), workloads (`workloads`), allocation decisions (`allocation_decisions`), and simulation events (`simulation_events`) surviving application restart.
+  - [x] Built live side-by-side comparison panels with honest decision-time reporting in ms and explicit error handling for missing/infeasible models.
+  - [x] Added duration-based simulation tick advancement with automatic resource expiration and release.
+  - [x] Built live comparative visualizations (Per-VM multi-resource utilization comparison, decision latency, cumulative outcomes).
+  - [x] Built MySQL Persistence Transparency panel with live table record inspection for teacher evaluation.
+  - [x] Fixed root cause of Reproducible Experiments error (`MLSelector object has no attribute pipeline_path`).
+  - [x] Added comprehensive unit & integration tests (`tests/test_live_simulator.py`) bringing passing test count to 48/48 (100% pass rate).
 
 ## Known Issues
 - None.
@@ -50,4 +62,5 @@
 Milestone 13: Finalize and Generate the Formal Academic Research Report.
 
 ## Manual Steps Required By User
-- None right now. DB was initialized locally successfully.
+- Launch dashboard: `.\venv\Scripts\python.exe -m streamlit run src/ui/dashboard.py`
+
