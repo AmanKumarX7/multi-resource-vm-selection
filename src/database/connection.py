@@ -5,13 +5,15 @@ import mysql.connector
 from mysql.connector import Error
 from dotenv import load_dotenv
 
+
+
 logger = logging.getLogger(__name__)
+
 
 class DatabaseConfig:
     @staticmethod
     def load_config() -> dict:
         load_dotenv()
-        
         return {
             "host": os.getenv("DB_HOST", "localhost"),
             "port": int(os.getenv("DB_PORT", 3306)),
@@ -29,7 +31,6 @@ def get_db_connection():
     config = DatabaseConfig.load_config()
     if not config["user"]:
         raise ValueError("Database credentials (DB_USER) are missing in environment.")
-
     connection = None
     try:
         connection = mysql.connector.connect(
@@ -46,6 +47,7 @@ def get_db_connection():
     except Exception as e:
         logger.error(f"Error connecting to MySQL: {e}")
         raise
+
     finally:
         if connection and connection.is_connected():
             connection.close()
