@@ -6,6 +6,7 @@ This project implements a multi-resource VM selection simulation supporting both
 
 1. **Workload Generator**: Generates simulated workloads requiring CPU, Memory, Disk I/O, and Network.
 2. **VM / Host Simulation**: Maintains the individual simulated states of VMs across the simulation duration.
+
 3. **Resource State Generator / Monitor**: Monitors current capacities and identifies overloads or capacities.
 4. **Multi-Resource Analyzer**: Forms candidates for VM allocation.
 5. **Decision Engine**: Two branching logic paths:
