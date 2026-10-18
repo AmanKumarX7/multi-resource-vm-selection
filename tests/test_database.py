@@ -9,6 +9,7 @@ def test_database_config_loading(monkeypatch):
     monkeypatch.setenv("DB_USER", "test_user")
     monkeypatch.setenv("DB_PASSWORD", "test_pass")
     
+    
     config = DatabaseConfig.load_config()
     assert config["host"] == "test_host"
     assert config["port"] == 1234
