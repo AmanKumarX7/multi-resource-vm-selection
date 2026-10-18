@@ -1,6 +1,4 @@
 # Investigating the Trade-off Between Load Balancing Accuracy and Decision Time in Multi-Resource VM Selection
-
-<<<<<<< HEAD
 A simulation-based research project that investigates the trade-off between load-balancing quality and decision time in multi-resource Virtual Machine (VM) selection. The project compares a baseline resource-aware selection method with a Machine Learning-based Random Forest approach across CPU, memory, disk I/O, and network resources.
 
 ## Table of Contents
