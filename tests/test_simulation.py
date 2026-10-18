@@ -10,17 +10,20 @@ class TestSimulationLayer:
         vm = VM("VM_Test", 100, 16, 1000, 1000)
         assert vm.cpu_utilization == 0.0
         assert vm.memory_utilization == 0.0
-        
+
+
         # Fill completely
         res = vm.allocate(100, 16, 1000, 1000)
         assert res is True
         assert vm.cpu_utilization == 100.0
+
         
         # Try to over-allocate
         assert not vm.can_allocate(1, 1, 1, 1)
         res_fail = vm.allocate(1, 1, 1, 1)
         assert res_fail is False
         assert vm.cpu_utilization == 100.0  # Does not over-100 if allocation failed correctly
+
 
         # Release and go below theoretically 0?
         vm.release(100, 16, 1000, 1000)

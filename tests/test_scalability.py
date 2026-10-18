@@ -4,6 +4,7 @@ from src.evaluation.scalability import ScalabilityRunner
 from src.ml.trainer import ModelTrainer
 from src.ml.preprocessing import Preprocessor
 from src.ml.model_persistence import ModelPersistence
+
 import pandas as pd
 
 class TestScalability:
@@ -25,6 +26,7 @@ class TestScalability:
         model_dir = str(tmpdir.mkdir("models"))
         return ModelPersistence.save_pipeline(model, preprocessor, model_dir, "test_rf")
 
+
     def test_aggregation_logic(self, mock_model_path):
         runner = ScalabilityRunner(mock_model_path)
         dummy_runs = [
@@ -33,6 +35,7 @@ class TestScalability:
             {'allocation_successes': 30, 'mean_decision_time': 0.2, 'total_sim_time': 3.0}
         ]
         agg = runner.aggregate_results(dummy_runs)
+        
         
         assert agg['allocation_successes_mean'] == 20
         assert agg['allocation_successes_min'] == 10
