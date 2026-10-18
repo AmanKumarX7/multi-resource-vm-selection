@@ -4,6 +4,7 @@ import pandas as pd
 from src.simulation.vm import VM
 from src.simulation.workload import Workload
 from src.algorithms.ml_selector import MLSelector
+
 from src.ml.trainer import ModelTrainer
 from src.ml.preprocessing import Preprocessor
 from src.ml.model_persistence import ModelPersistence
@@ -34,6 +35,7 @@ class TestMLSelector:
     def test_ml_selector_initialization_fails_gracefully(self):
         with pytest.raises(FileNotFoundError):
             MLSelector(model_path="non_existent_path.joblib")
+
 
     def test_ml_selector_no_feasible_vms(self, mock_model_path):
         selector = MLSelector(mock_model_path)
