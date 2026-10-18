@@ -410,6 +410,7 @@ This project is intended for academic learning, simulation, and research into mu
 1. To investigate how intelligent multi-resource load-balancing decisions can maintain balanced resource utilization across VMs.
 2. To study how efficiently VM selection decisions can be made as the number of VMs/workloads scales dynamically.
 
+
 ## Overview
 This is a simulation-based research project integrating Operating Systems, DBMS, and Machine Learning concepts. We evaluate a baseline resource-aware VM selection model against a Random Forest approach to analyze the trade-off between load-balancing accuracy and decision time across multiple resources (CPU, Memory, Disk I/O, Network).
 

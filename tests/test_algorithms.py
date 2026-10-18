@@ -5,6 +5,7 @@ from src.algorithms.baseline import BaselineSelector
 
 class TestBaselineSelector:
 
+
     def test_baseline_infeasible_exclusion(self):
         selector = BaselineSelector()
         wl = Workload("w1", "balanced", 50, 5, 100, 100, 0, 10)
