@@ -455,5 +455,6 @@ To run the full test suite (including simulation bounds, deterministic selectors
 ```bash
 .\venv\Scripts\python.exe -m pytest -v
 ```
+
 *(48 tests passing across unit, algorithm, ML pipeline, database persistence, and UI integration modules).*
->>>>>>> 8af0194b3d3165cf0cb04d2aac74b0b34f667eb8
+8af0194b3d3165cf0cb04d2aac74b0b34f667eb8
