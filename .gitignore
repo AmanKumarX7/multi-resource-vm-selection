@@ -1,0 +1,121 @@
+﻿# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+.envrc
+.streamlit/secrets.toml
+.pypirc
+
+# Build and distribution
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+*.spec
+
+# Logs and temporary files
+*.log
+pip-log.txt
+pip-delete-this-directory.txt
+tempCodeRunnerFile.py
+.DS_Store
+
+# Tests and coverage
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+nosetests.xml
+*.cover
+*.py.cover
+.hypothesis/
+.cache/
+cover/
+
+# Data and trained models (keep generated artifacts out of Git)
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
+
+# IDEs and editors
+.vscode/
+.idea/
+.spyderproject
+.spyproject
+.ropeproject
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Other Python tools
+.pybuilder/
+target/
+.pyenv/
+.pdm-python
+.pdm-build/
+.pixi/
+__pypackages__/
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+.pytest_cache/
+
+# Documentation build
+docs/_build/
+/site
+
+# Databases and application state
+instance/
+.webassets-cache
+db.sqlite3
+db.sqlite3-journal
+
+# Other tools
+.abstra/
+.marimo/
+celerybeat-schedule
+celerybeat.pid
+*.rdb
+*.aof
+*.pid
+mnesia/
+rabbitmq/
+rabbitmq-data/
+activemq-data/
+cython_debug/
