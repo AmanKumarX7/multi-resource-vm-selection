@@ -13,6 +13,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 echo.
 
+
 echo [2] Running Quick Experiment (Smoke Test)...
 venv\Scripts\python scripts\run_experiment.py --vms 50 --workloads 100 --seed 42
 echo.
