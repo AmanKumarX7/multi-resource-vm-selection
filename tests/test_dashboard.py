@@ -5,6 +5,7 @@ def test_dashboard_renders():
     # Test that the dashboard renders without crashing
     at = AppTest.from_file("../src/ui/dashboard.py", default_timeout=10)
     
+    
     # Run the app
     at.run()
     
