@@ -10,6 +10,7 @@ class ExperimentRepository:
     def create_experiment(name: str, description: str = "") -> int:
         """Creates an experiment and returns its auto-incremented ID."""
         query = "INSERT INTO experiments (name, description) VALUES (%s, %s)"
+
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cursor:
@@ -37,6 +38,7 @@ class ExperimentRepository:
     def get_experiment_results(experiment_id: int):
         """Returns all results for a given experiment ID."""
         query = "SELECT metric_name, metric_value FROM experiment_results WHERE experiment_id = %s"
+
         try:
             with get_db_connection() as conn:
                 with conn.cursor(dictionary=True) as cursor:

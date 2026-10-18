@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS model_runs (
         REFERENCES experiments(experiment_id) ON DELETE SET NULL
 );
 
--- 8. Model Metrics
+-- 8. Model Metrics 
 CREATE TABLE IF NOT EXISTS model_metrics (
     metric_id INT AUTO_INCREMENT PRIMARY KEY,
     run_id INT NOT NULL,
